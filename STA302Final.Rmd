@@ -1,0 +1,207 @@
+---
+title: "STA302 Final Project"
+author: "Yixing"
+date: "12/3/2023"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("MASS")
+library(MASS)
+library(tidyverse)
+library(dplyr)
+
+
+```
+
+
+## Cleaning and Processing Data
+
+Isolating the chosen predictor variables "Adult Mortality", "Hepatitis B", "HIV Cases", "GDP per capita", "Life Expectancy", "Developed" 
+
+```{r Project Part 1}
+data <-read.csv("Life-Expectancy-Data-Updated.csv")
+data <- subset(as.data.frame(data),
+                   select =c(Region, Life_expectancy, Adult_mortality,Hepatitis_B,Incidents_HIV,GDP_per_capita,Economy_status_Developed))
+write.csv(data, file = "Life-Expectancy-Data-Updated302.csv")
+glimpse(data)
+```
+## Multiple Linear Model
+
+The following variables are included in the Multiple Linear regression model: Life_expectancy as the response variable and Incidents_HIV, GDP_per_capita, Hepatitis_B, Adult-mortality and Economy_status_Developed as the predictor variables.
+
+```{r}
+model <- lm(Life_expectancy ~ GDP_per_capita + Adult_mortality + Incidents_HIV + Hepatitis_B + Economy_status_Developed, data = data)
+summary(model)
+```
+
+### Extracting fitted values from the model
+
+```{r}
+predicted_life_expectancy <- fitted(model)
+```
+
+## Check conditions
+
+### Check conditional mean response 
+
+Check the mean responses are a single function of a linear combination involving beta by plotting a scatterplot of Life Expectancy versus fitted values
+
+```{r}
+# plot to check condition 1
+plot(predicted_life_expectancy, data$Life_expectancy, main="Life Expectancy vs Fitted", xlab="Fitted", ylab="Life Expectancy")
+abline(a = 0, b = 1, lty=2)
+```
+Since there is a general random diagonal scatter, we can conclude that Condition 1 holds. Now we will evaluate Condition 2:
+
+### Check conditional mean predictors
+
+```{r}
+# plot to check condition 2
+pairs(data[,3:7])
+```
+There are no clear non-linear patterns in these pairwise plots, so condition 2 holds.
+
+## Residual Analysis
+
+### Extracting residuals
+
+```{r}
+residuals <- resid(model)
+```
+### Residual Plots
+
+To understand our model more and check for model assumptions the following plots:
+
+```{r}
+par(mfrow=c(2,3))
+plot(residuals ~ predicted_life_expectancy, main = "Residuals vs Fitted", xlab = "Fitted", ylab = "Residual")
+plot(residuals ~ data$Adult_mortality, main = "Residuals vs Adult mortatilty", xlab = "Adult mortality", ylab = "Residual")
+plot(residuals ~ data$Hepatitis_B, main = "Residuals vs Hepatitis B", xlab = "Hepatitis B", ylab = "Residual")
+plot(residuals ~ data$Incidents_HIV, main = "Residuals vs HIV prevalence", xlab = "HIV prevalence", ylab = "Residual")
+plot(residuals ~ data$GDP_per_capita, main = "Residuals vs GDP per capita", xlab = "GDP per capita", ylab = "Residual")
+boxplot(residuals ~ data$Economy_status_Developed, main = "Residuals vs Economy status", xlab = "Economy Status", ylab = "Residual",names =c("Not developed", "Developed"))
+```
+We can see in all the plots there are violations of linearity and constant variance, as there is a fanning pattern in nearly all of them and also a slight logarithmic curve in the Residuals vs GDP per capita.
+
+```{r}
+qqnorm(residuals)
+qqline(residuals)
+```
+Very minimal deviation from the diagonal is not strong enough evidence of a violation of normality, and thus normality holds.
+
+##Find an appropriate transformation
+
+Evaluate the histogram of our response variable, Life Expectancy.
+
+```{r}
+hist(data$Life_expectancy, main = "Histogram of Life Expectancy", xlab = "Life Expectancy")
+```
+Since there is a left skew, and not a right skew, we have further reasont to use
+a power transformation instead.
+
+###Trying Box Cox Transformation on Y
+```{r}
+boxcox_val <- boxcox(model)
+lambda <- boxcox_val$x[which.max(boxcox_val$y)]
+lambda
+
+model3 <- lm((data$Life_expectancy)^2 ~
+               (data$Adult_mortality)+
+               (data$Hepatitis_B) + 
+               (data$Incidents_HIV) +
+               (data$GDP_per_capita) +
+               Economy_status_Developed, 
+             data=data)
+
+summary(model3)
+```
+
+Since Lambda is 1.8, it can be rounded to 2
+
+###Rechecking assumptions for Box Cox Transformation on Y
+
+```{r}
+predicted_m3 <- fitted(model3)
+residuals_m3 <- resid(model3)
+
+par(mfrow=c(2,3))
+plot(residuals_m3 ~ predicted_m3, main = "Residuals vs Box Cox Fitted", xlab = "Box Cox Fitted", ylab = "Residual")
+plot(residuals_m3 ~ log(data$Adult_mortality), main = "Residuals vs Adult mortatilty", xlab = "Adult mortality", ylab = "Residual")
+plot(residuals_m3 ~ log(data$Hepatitis_B), main = "Residuals vs Hepatitis B", xlab = "lnHepatitis B", ylab = "Residual")
+plot(residuals_m3 ~ log(data$Incidents_HIV), main = "Residuals vs HIV prevalence", xlab = "HIV prevalence", ylab = "Residual")
+plot(residuals_m3 ~ log(data$GDP_per_capita), main = "Residuals vs GDP per capita", xlab = "GDP per capita", ylab = "Residual")
+boxplot(residuals_m3 ~ data$Economy_status_Developed, main = "Residuals vs Economy status", xlab = "Economy Status", ylab = "Residual",names =c("Not developed", "Developed"))
+
+hist((data$Life_expectancy)^2, main = "Histogram of Box Cox Transformed Life Expectancy", xlab = "Box Cox Transformed Life Expectancy")
+```
+
+###Trying Box Cox Transformation on X
+```{r}
+p <- powerTransform(cbind(data[,3:7]))
+summary(p)
+
+#check the rounded powers in the summary and then plug in place of [lambda]
+model2 <- lm(data$Life_expectancy ~
+               (data$Adult_mortality)^lambda + #TODO: replace here
+               (data$Hepatitis_B)^lambda + #TODO: replace here
+               (data$Incidents_HIV)^lambda + #TODO:replace here
+               (data$GDP_per_capita)^lambda + #TODO: replace here
+               Economy_status_Developed, 
+             data=data)
+
+summary(model2)
+```
+###Rechecking assumptions for Box Cox Transformation on X
+
+```{r}
+predicted_m2 <- fitted(model2)
+residuals_m2 <- resid(model2)
+
+par(mfrow=c(2,3))
+plot(residuals_m2 ~ predicted_m2, main = "Residuals vs Fitted", xlab = "Fitted", ylab = "Residual")
+plot(residuals_m2 ~ log(data$Adult_mortality), main = "Residuals vs Adult mortatilty", xlab = "Box Cox Adult mortality", ylab = "Residual")
+plot(residuals_m2 ~ log(data$Hepatitis_B), main = "Residuals vs Hepatitis B", xlab = "Box Cox Hepatitis B", ylab = "Residual")
+plot(residuals_m2 ~ log(data$Incidents_HIV), main = "Residuals vs HIV prevalence", xlab = "Box Cox HIV prevalence", ylab = "Residual")
+plot(residuals_m2 ~ log(data$GDP_per_capita), main = "Residuals vs GDP per capita", xlab = "Box Cox GDP per capita", ylab = "Residual")
+boxplot(residuals_m2 ~ data$Economy_status_Developed, main = "Residuals vs Economy status", xlab = "Economy Status", ylab = "Residual",names =c("Not developed", "Developed"))
+
+```
+
+##Calculate Intervals using Inferential Tools
+
+Our null hypothesis:
+GDP_per_capita = 0
+Adult_mortality = 0
+Incidents_HIV = 0
+Hepatitis_B = 0
+Economy_status_Developed = 0
+
+### Test Statistic
+```{r}
+summary(model)
+```
+Based on all our intercepts, our p-values are less than our significant value of 0.5 and therefore we 
+can conclude there is a statistically significant linear relationship and we can reject our null hypothesis.
+
+We can also see that our t values are greater than our critical value of 1.962.
+
+###95% Prediction Interval
+```{r}
+# create new data to predict at
+newdata <- data.frame(GDP_per_capita=5000, Adult_mortality=100, Hepatitis_B=85, Incidents_HIV=0.5, Economy_status_Developed=0)
+
+predict(model, newdata = newdata, level = 0.95, interval = "prediction")
+```
+
+
+###95% Confidence Interval
+```{r}
+confint(model, level = 0.95)
+```
+
+
+##Test Dataset using Inferential Tools
+
+###Calculate the decomposition of the sum of squares
